@@ -59,10 +59,23 @@ protected:
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Shooting")
     float ProjectileSpeed = 6000.f;
 
+    UPROPERTY(EditAnywhere, Category = "Abilities")
+    TSubclassOf<class UGameplayAbility> NormalAttackAbility;
+
+    UPROPERTY(EditAnywhere, Category = "Abilities")
+    TSubclassOf<class UGameplayAbility> FireballAbility;
+
+    UPROPERTY(EditAnywhere, Category = "Abilities")
+    TSubclassOf<class UGameplayAbility> BerserkAbility;
+
 public:
     UFUNCTION() void Input_NormalAttack();
     
     UFUNCTION() void Input_Fireball();
+
+    UFUNCTION() void Input_Berserk();
+
+    UFUNCTION() void Input_Restore();
 
     void LaunchNormalAttack(TSubclassOf<UGameplayEffect> InDamageGE = nullptr, UAbilitySystemComponent* InSourceASC = nullptr);
     

@@ -1,16 +1,17 @@
 ﻿#include "Characters/SimpleCharacter.h"
 
+#include "AbilitySystemComponent.h"
 #include "Camera/CameraComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
 #include "GameFramework/SpringArmComponent.h"
 #include "GameFramework/PlayerController.h"
+#include "GameplayAbilitySystem/SimpleAttributeSet.h"
+#include "GameplayEffect.h"
+#include "GameplayEffectExtension.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetMathLibrary.h"
-#include "Engine/World.h"
-
-#include "AbilitySystemComponent.h"
-#include "GameplayAbilitySystem/SimpleAttributeSet.h"
 #include "Projectile/SimpleProjectile.h"
 
 
@@ -26,7 +27,7 @@ ASimpleCharacter::ASimpleCharacter()
 
     // Muzzle scene at the gun
     Muzzle = CreateDefaultSubobject<USceneComponent>(TEXT("Muzzle"));
-    Muzzle->SetupAttachment(GunMesh, TEXT("Muzzle"));               // if no socket, just attach to GunMesh
+    Muzzle->SetupAttachment(GunMesh, TEXT("Muzzle"));               // if no socket, attach to GunMesh
 
     // Camera boom
     SpringArm = CreateDefaultSubobject<USpringArmComponent>(TEXT("SpringArm"));
@@ -57,6 +58,13 @@ void ASimpleCharacter::BeginPlay()
     {
         ASC->InitAbilityActorInfo(this, this);
     }
+
+    if (HasAuthority() && ASC)
+    {
+        if (NormalAttackAbility) ASC->GiveAbility(FGameplayAbilitySpec(NormalAttackAbility, 1, 0, this));
+        if (FireballAbility) ASC->GiveAbility(FGameplayAbilitySpec(FireballAbility, 1, 0, this));
+        if (BerserkAbility) ASC->GiveAbility(FGameplayAbilitySpec(BerserkAbility, 1, 0, this));
+    }
 }
 
 void ASimpleCharacter::Tick(float DeltaSeconds)
@@ -77,6 +85,8 @@ void ASimpleCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 
     PlayerInputComponent->BindAction("Attack",   IE_Pressed, this, &ASimpleCharacter::Input_NormalAttack);
     PlayerInputComponent->BindAction("Fireball", IE_Pressed, this, &ASimpleCharacter::Input_Fireball);
+    PlayerInputComponent->BindAction("Berserk", IE_Pressed, this, &ASimpleCharacter::Input_Berserk);
+    PlayerInputComponent->BindAction("Restore", IE_Pressed, this, &ASimpleCharacter::Input_Restore);
 }
 
 bool ASimpleCharacter::GetCursorHitPoint(FVector& OutHit) const
@@ -188,10 +198,54 @@ void ASimpleCharacter::LaunchFireball(TSubclassOf<UGameplayEffect> InDamageGE, U
 
 void ASimpleCharacter::Input_NormalAttack()
 {
-    LaunchNormalAttack(nullptr, ASC);
+    if (ASC && NormalAttackAbility)
+    {
+        ASC->TryActivateAbilityByClass(NormalAttackAbility);
+    }
 }
 
 void ASimpleCharacter::Input_Fireball()
 {
-    LaunchFireball(nullptr, ASC);
+    if (ASC && FireballAbility)
+    {
+        ASC->TryActivateAbilityByClass(FireballAbility);
+    }
+}
+
+void ASimpleCharacter::Input_Berserk()
+{
+    if (ASC && BerserkAbility)
+    {
+        ASC->TryActivateAbilityByClass(BerserkAbility);
+    }
+}
+
+void ASimpleCharacter::Input_Restore()
+{
+    if (!ASC || !Attributes) return;
+
+    // Create a transient GameplayEffect
+    UGameplayEffect* RestoreEffect = NewObject<UGameplayEffect>(GetTransientPackage(), FName("GE_Restore"));
+
+    RestoreEffect->DurationPolicy = EGameplayEffectDurationType::Instant;
+
+    // Health to MaxHealth
+    {
+        FGameplayModifierInfo ModInfo;
+        ModInfo.Attribute = USimpleAttributeSet::GetHealthAttribute();
+        ModInfo.ModifierOp = EGameplayModOp::Override;
+        ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(Attributes->GetMaxHealth()));
+        RestoreEffect->Modifiers.Add(ModInfo);
+    }
+
+    // Mana to MaxMana
+    {
+        FGameplayModifierInfo ModInfo;
+        ModInfo.Attribute = USimpleAttributeSet::GetManaAttribute();
+        ModInfo.ModifierOp = EGameplayModOp::Override;
+        ModInfo.ModifierMagnitude = FGameplayEffectModifierMagnitude(FScalableFloat(Attributes->GetMaxMana()));
+        RestoreEffect->Modifiers.Add(ModInfo);
+    }
+
+    ASC->ApplyGameplayEffectToSelf(RestoreEffect, 1.f, ASC->MakeEffectContext());
 }
