@@ -3,6 +3,10 @@
 #include "Components/SphereComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Engine/Engine.h"
+#include "AbilitySystemInterface.h"
+#include "AbilitySystemComponent.h"
+#include "GameplayEffect.h"
+#include "GameplayTagsManager.h"
 
 ASimpleProjectile::ASimpleProjectile()
 {
@@ -60,15 +64,46 @@ void ASimpleProjectile::InitFromAbility(UAbilitySystemComponent* InSourceASC, TS
 
 void ASimpleProjectile::OnHit(UPrimitiveComponent* HitComp, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-    // Step 1: keep it simple—just destroy on server when we hit something.
     if (!HasAuthority())
     {
         Destroy();
         return;
     }
 
-    // (Step 2 will: optionally execute explosion cue if bTriggerExplosionCue,
-    //  and apply DamageGE to target if it has an ASC)
+    if (SourceASC)
+    {
+        FGameplayEffectContextHandle Ctx = SourceASC->MakeEffectContext();
+        Ctx.AddInstigator(GetOwner(), GetOwner());
+        Ctx.AddHitResult(Hit);
+
+        // Optional explosion cue
+        if (bTriggerExplosionCue)
+        {
+            FGameplayCueParameters CueParams;
+            CueParams.Location = Hit.ImpactPoint;
+            CueParams.Normal = Hit.ImpactNormal;
+            CueParams.EffectContext = Ctx;
+
+            const FGameplayTag ExplosionTag = FGameplayTag::RequestGameplayTag(TEXT("GameplayCue.Explosion"));
+            SourceASC->ExecuteGameplayCue(ExplosionTag, CueParams);
+        }
+
+        // Deal damage if target has ASC
+        if (DamageGE && OtherActor && OtherActor != GetOwner())
+        {
+            if (IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(OtherActor))
+            {
+                if (UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent())
+                {
+                    FGameplayEffectSpecHandle Spec = SourceASC->MakeOutgoingSpec(DamageGE, 1.f, Ctx);
+                    if (Spec.IsValid())
+                    {
+                        SourceASC->ApplyGameplayEffectSpecToTarget(*Spec.Data.Get(), TargetASC);
+                    }
+                }
+            }
+        }
+    }
 
     Destroy();
 }

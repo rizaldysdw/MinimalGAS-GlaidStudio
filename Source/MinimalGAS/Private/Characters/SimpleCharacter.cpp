@@ -9,7 +9,10 @@
 #include "Kismet/KismetMathLibrary.h"
 #include "Engine/World.h"
 
+#include "AbilitySystemComponent.h"
+#include "GameplayAbilitySystem/SimpleAttributeSet.h"
 #include "Projectile/SimpleProjectile.h"
+
 
 ASimpleCharacter::ASimpleCharacter()
 {
@@ -37,11 +40,23 @@ ASimpleCharacter::ASimpleCharacter()
     Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
     Camera->SetupAttachment(SpringArm, USpringArmComponent::SocketName);
     Camera->bUsePawnControlRotation = false;
+
+    // GAS
+    ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
+    ASC->SetIsReplicated(true);
+    ASC->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+
+    Attributes = CreateDefaultSubobject<USimpleAttributeSet>(TEXT("Attributes"));
 }
 
 void ASimpleCharacter::BeginPlay()
 {
     Super::BeginPlay();
+
+    if (ASC)
+    {
+        ASC->InitAbilityActorInfo(this, this);
+    }
 }
 
 void ASimpleCharacter::Tick(float DeltaSeconds)
@@ -126,12 +141,7 @@ void ASimpleCharacter::AimArmsYawOnlyTowards(const FVector& WorldTarget, float D
     GetMesh()->SetWorldRotation(Smoothed);
 }
 
-// Shared spawn helper
-void ASimpleCharacter::SpawnProjectileTowards(const FVector& Target,
-    ASimpleProjectile*& OutProj,
-    bool bExplosionCue,
-    TSubclassOf<UGameplayEffect> InDamageGE,
-    UAbilitySystemComponent* InSourceASC)
+void ASimpleCharacter::SpawnProjectileTowards(const FVector& Target, ASimpleProjectile*& OutProj, bool bExplosionCue, TSubclassOf<UGameplayEffect> InDamageGE, UAbilitySystemComponent* InSourceASC)
 {
     OutProj = nullptr;
     if (!ProjectileClass || !Muzzle) return;
@@ -150,44 +160,38 @@ void ASimpleCharacter::SpawnProjectileTowards(const FVector& Target,
     ASimpleProjectile* Proj = GetWorld()->SpawnActor<ASimpleProjectile>(ProjectileClass, MuzzleLoc, SpawnRot, Params);
     if (Proj)
     {
-        // Configure explosion behaviour per ability
         Proj->bTriggerExplosionCue = bExplosionCue;
-
-        // Step 1: no GAS yet; this is safe. In Step 2 we’ll use this to pass ASC/GE.
         Proj->InitFromAbility(InSourceASC, InDamageGE);
-
         Proj->FireInDirection(Dir, ProjectileSpeed);
     }
 
     OutProj = Proj;
 }
 
-// Fireball: projectile WITH explosion cue
-void ASimpleCharacter::LaunchFireball(TSubclassOf<UGameplayEffect> InDamageGE, UAbilitySystemComponent* InSourceASC)
-{
-    FVector Target;
-    if (!GetCursorHitPoint(Target)) return;
-
-    ASimpleProjectile* Spawned = nullptr;
-    SpawnProjectileTowards(Target, Spawned, /*bExplosionCue*/ true, InDamageGE, InSourceASC);
-}
-
-// Normal Attack: projectile WITHOUT explosion cue
 void ASimpleCharacter::LaunchNormalAttack(TSubclassOf<UGameplayEffect> InDamageGE, UAbilitySystemComponent* InSourceASC)
 {
     FVector Target;
     if (!GetCursorHitPoint(Target)) return;
 
     ASimpleProjectile* Spawned = nullptr;
-    SpawnProjectileTowards(Target, Spawned, /*bExplosionCue*/ false, InDamageGE, InSourceASC);
+    SpawnProjectileTowards(Target, Spawned, false, InDamageGE, InSourceASC);
 }
 
-// Optional input wrappers (hook to Input when ready)
-void ASimpleCharacter::Input_Fireball()
+void ASimpleCharacter::LaunchFireball(TSubclassOf<UGameplayEffect> InDamageGE, UAbilitySystemComponent* InSourceASC)
 {
-    LaunchFireball(nullptr, nullptr); // Step 2 will pass DamageGE + ASC
+    FVector Target;
+    if (!GetCursorHitPoint(Target)) return;
+
+    ASimpleProjectile* Spawned = nullptr;
+    SpawnProjectileTowards(Target, Spawned, true, InDamageGE, InSourceASC);
 }
+
 void ASimpleCharacter::Input_NormalAttack()
 {
-    LaunchNormalAttack(nullptr, nullptr); // Step 2 will pass DamageGE + ASC
+    LaunchNormalAttack(nullptr, ASC);
+}
+
+void ASimpleCharacter::Input_Fireball()
+{
+    LaunchFireball(nullptr, ASC);
 }

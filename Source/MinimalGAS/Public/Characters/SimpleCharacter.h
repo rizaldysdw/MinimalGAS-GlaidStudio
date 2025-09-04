@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AbilitySystemInterface.h"
 #include "SimpleCharacter.generated.h"
 
 // Forward-declare
@@ -12,21 +13,22 @@ class USphereComponent;
 class UProjectileMovementComponent;
 class UAbilitySystemComponent;
 class UGameplayEffect;
+class USimpleAttributeSet;
 
 UCLASS()
-class MINIMALGAS_API ASimpleCharacter : public ACharacter
+class MINIMALGAS_API ASimpleCharacter : public ACharacter, public IAbilitySystemInterface
 {
     GENERATED_BODY()
 
 public:
     ASimpleCharacter();
 
+    virtual void BeginPlay() override;
     virtual void Tick(float DeltaSeconds) override;
     virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
+    virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override { return ASC; }
 
 protected:
-    virtual void BeginPlay() override;
-
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     USkeletalMeshComponent* GunMesh;
 
@@ -38,6 +40,12 @@ protected:
 
     UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
     UCameraComponent* Camera;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
+    UAbilitySystemComponent* ASC;
+
+    UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
+    USimpleAttributeSet* Attributes;
 
     UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Aiming")
     float AimInterpSpeed = 10.f;
@@ -53,14 +61,17 @@ protected:
 
 public:
     UFUNCTION() void Input_NormalAttack();
+    
     UFUNCTION() void Input_Fireball();
 
-    void LaunchFireball(TSubclassOf<UGameplayEffect> InDamageGE = nullptr, UAbilitySystemComponent* InSourceASC = nullptr);
-
     void LaunchNormalAttack(TSubclassOf<UGameplayEffect> InDamageGE = nullptr, UAbilitySystemComponent* InSourceASC = nullptr);
+    
+    void LaunchFireball(TSubclassOf<UGameplayEffect> InDamageGE = nullptr, UAbilitySystemComponent* InSourceASC = nullptr);
 
 protected:
     bool GetCursorHitPoint(FVector& OutHit) const;
+    
     void AimArmsYawOnlyTowards(const FVector& WorldTarget, float DeltaSeconds);
+    
     void SpawnProjectileTowards(const FVector& Target, class ASimpleProjectile*& OutProj, bool bExplosionCue, TSubclassOf<UGameplayEffect> InDamageGE, UAbilitySystemComponent* InSourceASC);
 };
